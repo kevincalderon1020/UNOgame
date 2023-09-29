@@ -1,0 +1,265 @@
+#include <iostream>
+#include <cstdlib>
+#include <chrono>
+#include <string>
+
+using namespace std;
+
+struct Carta {
+    string color;
+    string tipo;
+    int valor;
+
+    Carta() : color(""), tipo(""), valor(0) {} 
+
+    Carta(string col, string tip, int val) : color(col), tipo(tip), valor(val) {}
+};
+
+class Mazo {
+private:
+    Carta cartas[108];
+    int numCartas;
+
+public:
+    Mazo() : numCartas(0) {
+        
+        for (int i = 0; i <= 9; i++) {
+            for (int j = 0; j < 4; j++) {
+                string color;
+                switch (j) {
+                case 0: color = "Rojo"; break;
+                case 1: color = "Amarillo"; break;
+                case 2: color = "Verde"; break;
+                case 3: color = "Azul"; break;
+                }
+                cartas[numCartas++] = Carta(color, "Normal", i);
+                cartas[numCartas++] = Carta(color, "Normal", i);
+            }
+        }
+
+        for (int i = 1; i <= 9; i++) {
+            cartas[numCartas++] = Carta("Negro", "+2", 20);
+            cartas[numCartas++] = Carta("Negro", "Cambio de color", 50);
+        }
+    }
+
+    void barajar() {
+        srand(time(0));
+        for (int i = 0; i < numCartas; i++) {
+            int randIndex = rand() % numCartas;
+            swap(cartas[i], cartas[randIndex]);
+        }
+    }
+
+    Carta robarCarta() {
+        Carta carta = cartas[--numCartas];
+        return carta;
+    }
+
+    int getSize() {
+        return numCartas;
+    }
+};
+
+class Jugador {
+private:
+    Carta mano[8];
+    int numCartasEnMano;
+
+public:
+    Jugador() : numCartasEnMano(0) {}
+
+    void recibirCarta(Carta carta) {
+        if (numCartasEnMano < 8) {
+            mano[numCartasEnMano++] = carta;
+        }
+    }
+
+    void mostrarMano() {
+        cout << "Cartas en la mano: " << endl;
+        for (int i = 0; i < numCartasEnMano; i++) {
+            cout << i + 1 << ". " << mano[i].color << " " << mano[i].tipo << " " << mano[i].valor << endl;
+        }
+    }
+
+    int getNumCartas() {
+        return numCartasEnMano;
+    }
+
+    Carta jugarCarta(int index) {
+        Carta carta = mano[index];
+        numCartasEnMano--;
+        for (int i = index; i < numCartasEnMano; i++) {
+            mano[i] = mano[i + 1];
+        }
+        return carta;
+    }
+};
+
+class Juego {
+private:
+    Mazo mazo;
+    Jugador jugador1;
+    Jugador jugador2;
+    const int tiempoLimitePorTurno = 60;
+    bool penalizacion;
+    bool saltarTurno;
+
+public:
+
+    Juego() : penalizacion(false), saltarTurno(false) {}
+    void iniciarJuego() {
+        mazo.barajar();
+        for (int i = 0; i < 8; i++) {
+            jugador1.recibirCarta(mazo.robarCarta());
+            jugador2.recibirCarta(mazo.robarCarta());
+        }
+    }
+
+    bool esCartaValida(Carta cartaJugada, Carta cartaEnMesa, string& motivo) {
+        if (cartaJugada.color == "Negro") return true; 
+        if (cartaJugada.color == cartaEnMesa.color) return true;
+        if (cartaJugada.valor == cartaEnMesa.valor && cartaJugada.tipo == "Normal") return true; 
+
+        motivo = "La carta no coincide en color o valor con la carta en mesa.";
+        return false;
+    }
+
+    void jugar() {
+        int turno = 1;
+        bool juegoTerminado = false;
+        Carta cartaEnMesa = mazo.robarCarta();
+
+        while (!juegoTerminado) {
+            Jugador& jugadorActual = (turno == 1) ? jugador1 : jugador2;
+            Jugador& otroJugador = (turno == 1) ? jugador2 : jugador1;
+
+            cout << "Carta en mesa: " << cartaEnMesa.color << " " << cartaEnMesa.tipo << " " << cartaEnMesa.valor << endl;
+            cout << "Turno del Jugador " << turno << endl;
+            jugadorActual.mostrarMano();
+
+            int index;
+            Carta cartaJugada;
+
+
+            auto tiempoInicioTurno = chrono::steady_clock::now();
+
+            bool tieneCartaValida = false;
+            string motivo;
+
+            for (int i = 0; i < jugadorActual.getNumCartas(); ++i) {
+                Carta cartaTemporal = jugadorActual.jugarCarta(i);
+
+                if (esCartaValida(cartaTemporal, cartaEnMesa, motivo)) {
+                    tieneCartaValida = true;
+                    jugadorActual.recibirCarta(cartaTemporal);
+                    break;
+                }
+                else {
+                    jugadorActual.recibirCarta(cartaTemporal);
+                }
+            }
+
+            if (!tieneCartaValida) {
+                cout << "No tienes una carta válida para jugar. Toma una carta del mazo." << endl;
+                jugadorActual.recibirCarta(mazo.robarCarta());
+                continue;
+            }
+
+            bool cartaValida = false;
+            bool pasoTurno = false;
+
+            do {
+                do {
+                    cout << "Ingresa el numero de la carta que deseas jugar o -1 para pasar turno: ";
+                    cin >> index;
+                    index--;
+
+                    auto tiempoActual = chrono::steady_clock::now();
+                    auto tiempoTranscurrido = chrono::duration_cast<chrono::seconds>(tiempoActual - tiempoInicioTurno).count();
+
+                    if (tiempoTranscurrido >= tiempoLimitePorTurno) {
+                        cout << "Se ha agotado el tiempo límite para este turno. Jugador " << turno << " debe robar una carta." << endl;
+                        jugadorActual.recibirCarta(mazo.robarCarta());
+                        pasoTurno = true;
+                    }
+                    if (index == -1) {
+                        cout << "Has decidido pasar el turno. Jugador " << turno << " debe robar una carta." << endl;
+                        jugadorActual.recibirCarta(mazo.robarCarta());
+                        pasoTurno = true;
+                    }
+                    else if (index >= 0 && index < jugadorActual.getNumCartas()) {
+                        cartaJugada = jugadorActual.jugarCarta(index);
+
+                        string motivo;
+                        if (esCartaValida(cartaJugada, cartaEnMesa, motivo)) {
+                            cartaValida = true;
+
+                            if (cartaJugada.tipo == "+2") {
+                                cout << "Jugador " << turno << " ha jugado una carta +2. Jugador " << (turno == 1 ? 2 : 1) << " toma 2 cartas y pierde su turno." << endl;
+                                otroJugador.recibirCarta(mazo.robarCarta());
+                                otroJugador.recibirCarta(mazo.robarCarta());
+                                saltarTurno = true;
+                            }
+                            else if (cartaJugada.tipo == "+4" || cartaJugada.tipo == "Cambio de color") {
+                                string nuevoColor;
+                                cout << "Jugador " << turno << " ha jugado una carta " << cartaJugada.tipo << ". Elige un nuevo color (Rojo, Amarillo, Verde, Azul): ";
+                                cin >> nuevoColor;
+                                cartaEnMesa.color = nuevoColor;
+
+                                if (cartaJugada.tipo == "+4") {
+                                    cout << "Jugador " << (turno == 1 ? 2 : 1) << " toma 4 cartas y pierde su turno." << endl;
+                                    otroJugador.recibirCarta(mazo.robarCarta());
+                                    otroJugador.recibirCarta(mazo.robarCarta());
+                                    otroJugador.recibirCarta(mazo.robarCarta());
+                                    otroJugador.recibirCarta(mazo.robarCarta());
+                                    saltarTurno = true;
+                                }
+                            }
+
+                            cartaEnMesa = cartaJugada;
+                        }
+                        else {
+                            if (motivo == "color") cout << "La carta seleccionada no coincide en color." << endl;
+                            else if (motivo == "tipo") cout << "La carta seleccionada no coincide en tipo." << endl;
+                            else if (motivo == "valor") cout << "La carta seleccionada no coincide en valor." << endl;
+                            jugadorActual.recibirCarta(cartaJugada); 
+                        }
+                    }
+                    else {
+                        cout << "Número de carta no válido. Ingresa un número válido." << endl;
+                    }
+
+                } while (!cartaValida && !pasoTurno);
+
+                if (pasoTurno) break;
+
+                if (cartaJugada.tipo == "+2" && cartaValida) {
+                    otroJugador.recibirCarta(mazo.robarCarta());
+                    otroJugador.recibirCarta(mazo.robarCarta());
+                }
+
+            } while (!cartaValida && !pasoTurno);
+
+            if (saltarTurno) {
+                saltarTurno = false;
+            }
+            else if (jugadorActual.getNumCartas() == 0) {
+                cout << "¡Jugador " << turno << " ha ganado!" << endl;
+                juegoTerminado = true;
+            }
+
+
+            turno = (turno == 1) ? 2 : 1;
+        }
+    }
+
+};
+
+int main() {
+    Juego juego;
+    juego.iniciarJuego();
+    juego.jugar();
+
+    return 0;
+};
